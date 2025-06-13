@@ -1,0 +1,62 @@
+## **How to Install and Test the App:**
+
+1. Install the app on your development store using this App URL:
+   **[https://acm-fought-patch-thunder.trycloudflare.com/auth/login](https://acm-fought-patch-thunder.trycloudflare.com/auth/login)**
+   *(Enter your Shopify store domain to authenticate and install from this URL.)*
+
+2. Set up the **Theme App Extension** in the **host theme** on the **Product Page**.
+
+3. Preview your **Theme App Extension** in the development store.
+
+---
+
+## **Important Notes:**
+
+* This app is running on a **local server**, and the app URL changes every time the server restarts.
+
+* After every server restart, the **new app URL** must be updated in the **Shopify Partner Proxy settings**.
+
+* When the app is deployed, the proxy gets removed, so during development, make sure to inform me before testing.
+  I will restart the server and update the proxy URL accordingly.
+
+* **Current App Proxy URL:**
+  **[https://sms-mf-joshua-manufacturing.trycloudflare.com/api/server](https://sms-mf-joshua-manufacturing.trycloudflare.com/api/server)**
+
+---
+
+## **Data Flow Overview:**
+
+### **1. Admin (App Backend):**
+
+* Merchant sets or updates a product review using the app’s admin panel.
+* The review is stored in the app’s database (e.g., via **Prisma**).
+
+---
+
+### **2. Storefront Extension (Theme Block + JS):**
+
+* The product page contains a block with a JS script.
+* This script fetches the review for the current **product** and **shop**.
+
+---
+
+### **3. App Proxy:**
+
+* The JS script sends a fetch request to the **Shopify App Proxy endpoint** (e.g., `/apps/review`).
+* Shopify securely forwards this request to your **backend API**.
+
+---
+
+### **4. Backend API:**
+
+* The API receives the request.
+* It queries the database for the matching **shop** and **productId** review.
+* Returns the review data as **JSON**.
+
+---
+
+### **5. Frontend Display:**
+
+* The JS script renders the fetched review inside the **product page block**.
+* If the **proxy fails** (e.g., during development), it falls back to the app’s **direct URL**.
+

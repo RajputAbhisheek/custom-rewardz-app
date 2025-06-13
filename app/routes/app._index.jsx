@@ -17,7 +17,7 @@ import prisma from "../db.server";
 
 const PRODUCTS_QUERY = `
   {
-   products(first: 10) {
+   products(first: 50) {
     nodes {
       id
       title
@@ -28,7 +28,7 @@ const PRODUCTS_QUERY = `
            }
        }
       }
-      variants(first: 1) {
+      variants(first: 5) {
         nodes {
           id
           compareAtPrice

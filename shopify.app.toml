@@ -3,7 +3,7 @@
 client_id = "00df2639c3e007139b1ef087cc67f6e0"
 name = "custom-app-rewardz"
 handle = "custom-app-rewardz"
-application_url = "https://sms-mf-joshua-manufacturing.trycloudflare.com"
+application_url = "https://acm-fought-patch-thunder.trycloudflare.com"
 embedded = true
 
 [build]
@@ -26,7 +26,7 @@ api_version = "2025-04"
 scopes = "read_products, write_products"
 
 [auth]
-redirect_urls = ["https://sms-mf-joshua-manufacturing.trycloudflare.com/auth/callback", "https://sms-mf-joshua-manufacturing.trycloudflare.com/auth/shopify/callback", "https://sms-mf-joshua-manufacturing.trycloudflare.com/api/auth/callback"]
+redirect_urls = ["https://acm-fought-patch-thunder.trycloudflare.com/auth/callback", "https://acm-fought-patch-thunder.trycloudflare.com/auth/shopify/callback", "https://acm-fought-patch-thunder.trycloudflare.com/api/auth/callback"]
 
 [pos]
 embedded = false

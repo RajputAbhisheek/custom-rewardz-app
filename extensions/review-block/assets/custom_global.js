@@ -8,7 +8,7 @@ $(document).ready(async function () {
   // Proxy URL (relative to the store domain)
   var proxyUrl = `/apps/review?shop=${shop}&productId=${productId}`;
   // Direct app URL as fallback
-  var appUrl = `https://sms-mf-joshua-manufacturing.trycloudflare.com/api/server?shop=${shop}&productId=${productId}`;
+  var appUrl = `https://acm-fought-patch-thunder.trycloudflare.com/api/server?shop=${shop}&productId=${productId}`;
 
   // Helper to render review
   function renderReview(snippet) {
