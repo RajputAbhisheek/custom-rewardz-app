@@ -1,0 +1,17 @@
+{{ 'custom.css' | asset_url | stylesheet_tag }}
+<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.6.0/jquery.min.js" defer></script>
+<script src="{{ 'custom_global.js' | asset_url }}" defer></script> 
+
+
+{% assign graphql_product_id = 'gid://shopify/Product/' | append: product.id %}
+
+<div id="app_review_section" product_id="{{ graphql_product_id }}" shop={{ shop.domain }} >Hello Section</div>
+
+
+{% schema %}
+{
+  "name": "custom-reward-app",
+  "target": "section",
+  "settings": []
+}
+{% endschema %}
