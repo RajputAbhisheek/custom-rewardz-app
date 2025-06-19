@@ -11,101 +11,133 @@ import {
   BlockStack,
 } from "@shopify/polaris";
 import { useState, useEffect } from "react";
-import { useLoaderData } from "@remix-run/react";
+import { useLoaderData, useLocation, useNavigate } from "@remix-run/react";
 import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
 
+const PRODUCTS_PER_PAGE = 5;
+
 const PRODUCTS_QUERY = `
-  {
-   products(first: 50) {
-    nodes {
-      id
-      title
-      featuredMedia{
-       preview{
-        image{
-           url
-           }
-       }
+  query Products($first: Int, $last: Int, $after: String, $before: String) {
+    products(first: $first, last: $last, after: $after, before: $before) {
+      pageInfo {
+        hasNextPage
+        hasPreviousPage
+        endCursor
+        startCursor
       }
-      variants(first: 5) {
-        nodes {
+      edges {
+        cursor
+        node {
           id
-          compareAtPrice
-          price
-          image{
-          url 
+          title
+          featuredMedia {
+            preview {
+              image {
+                url
+              }
+            }
+          }
+          variants(first: 5) {
+            nodes {
+              id
+              compareAtPrice
+              price
+              image {
+                url
+              }
+            }
           }
         }
       }
     }
-   }
   }
 `;
 
 export async function loader({ request }) {
   const { admin, session } = await authenticate.admin(request);
-  const response = await admin.graphql(PRODUCTS_QUERY);
+  const url = new URL(request.url);
+
+  // Use after/before for cursor-based navigation
+  const after = url.searchParams.get("after") || null;
+  const before = url.searchParams.get("before") || null;
+
+  // For forward (next), use first/after. For backward (prev), use last/before.
+  let variables = {};
+  if (after) {
+    variables = { first: PRODUCTS_PER_PAGE, after };
+  } else if (before) {
+    variables = { last: PRODUCTS_PER_PAGE, before };
+  } else {
+    variables = { first: PRODUCTS_PER_PAGE };
+  }
+
+  // Fetch products
+  const response = await admin.graphql(PRODUCTS_QUERY, { variables });
   const result = await response.json();
   const shop = session.shop;
 
-  // Fetch all reviews for this shop
+  // Fetch reviews for this shop
   const reviews = await prisma.review.findMany({
     where: { shop },
-    select: { productId: true, snippet: true }
+    select: { productId: true, snippet: true },
   });
 
-
-  console.log('review are ', reviews);
   // Map productId to snippet for quick lookup
   const reviewMap = {};
-  reviews.forEach(r => { reviewMap[r.productId] = r.snippet; });
+  reviews.forEach((r) => {
+    reviewMap[r.productId] = r.snippet;
+  });
 
-  // Attach review to each product
-  const productsWithReviews = result.data.products.nodes.map(product => ({
-    ...product,
-    review: reviewMap[product.id] || ""
+  // Attach review to each product node
+  const productsWithReviews = result.data.products.edges.map((edge) => ({
+    ...edge.node,
+    review: reviewMap[edge.node.id] || "",
+    cursor: edge.cursor,
   }));
 
   return {
     products: productsWithReviews,
-    shop
+    shop,
+    pageInfo: result.data.products.pageInfo,
   };
 }
 
 export default function HomePage() {
-  const { products: initialProducts, shop } = useLoaderData();
+  const {
+    products: initialProducts,
+    shop,
+    pageInfo: initialPageInfo,
+  } = useLoaderData();
 
-
-  // Local state for products so we can update them
   const [products, setProducts] = useState(initialProducts);
+  const [pageInfo, setPageInfo] = useState(initialPageInfo);
 
-    console.log('product with reviews ', products);
+  console.log("page infor data ", pageInfo);
+  const [loadingPage, setLoadingPage] = useState(false);
 
-
-  const [activeModal, setActiveModal] = useState(null); // {type: 'price'|'review', product, variant}
+  const [activeModal, setActiveModal] = useState(null);
   const [priceInput, setPriceInput] = useState("");
   const [reviewInput, setReviewInput] = useState("");
   const [selectedVariantId, setSelectedVariantId] = useState({});
   const [loading, setLoading] = useState(false);
   const [updateResult, setUpdateResult] = useState(null);
   const [reviewResult, setReviewResult] = useState(null);
-
-  console.log('updated resule ', updateResult);
+  const location = useLocation();
+  const navigate = useNavigate();
+  console.log("current location is ", location);
 
   // Open/close modals
   const handleOpenModal = (type, product, variant) => {
     setActiveModal({ type, product, variant });
     if (type === "price") setPriceInput(variant.price);
     if (type === "review") {
-    const currentReview = products.find(p => p.id === product.id)?.review || "";
-    setReviewInput(currentReview);
-  }
+      const currentReview =
+        products.find((p) => p.id === product.id)?.review || "";
+      setReviewInput(currentReview);
+    }
   };
-  const handleCloseModal = () => {
-    setActiveModal(null);
-    // setUpdateResult(null);
-  };
+  const handleCloseModal = () => setActiveModal(null);
 
   // Update price via backend API
   const handleUpdatePrice = async () => {
@@ -125,13 +157,11 @@ export default function HomePage() {
       if (!res.ok) {
         alert(data.error || "Failed to update price");
       } else {
-        // console.log('its calling or not');
         setUpdateResult({
           variantId: activeModal.variant.id,
           price: priceInput,
           productId: activeModal.product.id,
         });
-        console.log('update results ar ', updateResult);
       }
     } catch (err) {
       alert("Error updating price: " + err.message);
@@ -141,39 +171,37 @@ export default function HomePage() {
   };
 
   const handleAddReview = async () => {
-  if (!reviewInput.trim()) {
-    alert("Review cannot be empty.");
-    return;
-  }
-  setLoading(true);
-  try {
-    const res = await fetch("/api/server", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        shop,
-        productId: activeModal.product.id,
-        reviewSnippet: reviewInput,
-      }),
-    });
-    const data = await res.json();
-    if (!res.ok) {
-      alert(data.error || "Failed to add review");
-    } else {
-      setReviewResult({
-        productId: activeModal.product.id,
-        snippet: data.review.snippet,
-      });
+    if (!reviewInput.trim()) {
+      alert("Review cannot be empty.");
+      return;
     }
-  } catch (err) {
-    alert("Error adding review: " + err.message);
-  }
-  setLoading(false);
-  handleCloseModal();
-};
+    setLoading(true);
+    try {
+      const res = await fetch("/api/server", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          shop,
+          productId: activeModal.product.id,
+          reviewSnippet: reviewInput,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        alert(data.error || "Failed to add review");
+      } else {
+        setReviewResult({
+          productId: activeModal.product.id,
+          snippet: data.review.snippet,
+        });
+      }
+    } catch (err) {
+      alert("Error adding review: " + err.message);
+    }
+    setLoading(false);
+    handleCloseModal();
+  };
 
-
-  // console.log('products are ', products);
   // Update product price in local state after successful update
   useEffect(() => {
     if (updateResult) {
@@ -195,34 +223,52 @@ export default function HomePage() {
           return product;
         }),
       );
-
       setUpdateResult(null);
     }
   }, [updateResult]);
 
-
-  // update the review in local state after successful update
+  // Update the review in local state after successful update
   useEffect(() => {
-  if (reviewResult) {
-    setProducts((prevProducts) =>
-      prevProducts.map((product) =>
-        product.id === reviewResult.productId
-          ? { ...product, review: reviewResult.snippet }
-          : product
-      )
-    );
-    setReviewResult(null);
-  }
-}, [reviewResult]);
+    if (reviewResult) {
+      setProducts((prevProducts) =>
+        prevProducts.map((product) =>
+          product.id === reviewResult.productId
+            ? { ...product, review: reviewResult.snippet }
+            : product,
+        ),
+      );
+      setReviewResult(null);
+    }
+  }, [reviewResult]);
 
+  // Fetch products for next/previous page using cursor
+  const goToPage = async (direction) => {
+    setLoadingPage(true);
+    let url = "/api/products?";
+    // If your API requires the shop param, add it here:
+    url += `shop=${encodeURIComponent(shop)}&`;
 
-  // Table rows
+    if (direction === "next" && pageInfo.hasNextPage) {
+      url += `after=${encodeURIComponent(pageInfo.endCursor)}`;
+    } else if (direction === "prev" && pageInfo.hasPreviousPage) {
+      url += `before=${encodeURIComponent(pageInfo.startCursor)}`;
+    } else {
+      setLoadingPage(false);
+      return;
+    }
+
+    const res = await fetch(url);
+    const data = await res.json();
+    setProducts(data.products);
+    setPageInfo(data.pageInfo);
+    setLoadingPage(false);
+  };
+
   const rows = products.map((product) => {
     const variants = product.variants.nodes;
     const selectedId = selectedVariantId[product.id] || variants[0]?.id;
     const selectedVariant =
       variants.find((v) => v.id === selectedId) || variants[0];
-
     return [
       product.title,
       product.featuredMedia?.preview?.image?.url ? (
@@ -266,6 +312,27 @@ export default function HomePage() {
     ];
   });
 
+  const paginationButtons = (
+    <div style={{ textAlign: "center", margin: "20px 0" }}>
+      <Button
+        onClick={() => goToPage("prev")}
+        disabled={!pageInfo.hasPreviousPage || loadingPage}
+        loading={loadingPage}
+        style={{ margin: "0 4px" }}
+      >
+        Previous
+      </Button>
+      <Button
+        onClick={() => goToPage("next")}
+        disabled={!pageInfo.hasNextPage || loadingPage}
+        loading={loadingPage}
+        style={{ margin: "0 4px" }}
+      >
+        Next
+      </Button>
+    </div>
+  );
+
   return (
     <Page title="Product Page Editor">
       <Card>
@@ -274,6 +341,7 @@ export default function HomePage() {
           headings={["Title", "Image", "Price", "Variant", "Actions"]}
           rows={rows}
         />
+        {paginationButtons}
       </Card>
 
       {/* Update Price Modal */}
@@ -329,21 +397,21 @@ export default function HomePage() {
         <Modal.Section>
           <BlockStack gap="200">
             <TextField
-        label="Review"
-        value={reviewInput}
-        onChange={setReviewInput}
-        multiline
-        autoFocus
-        placeholder={
-          // Find the current product's review from products state
-          products.find(p => p.id === activeModal?.product?.id)?.review || "Enter your review..."
-        }
-        helpText={
-          products.find(p => p.id === activeModal?.product?.id)?.review
-            ? `Current review: ${products.find(p => p.id === activeModal?.product?.id)?.review}`
-            : undefined
-        }
-      />
+              label="Review"
+              value={reviewInput}
+              onChange={setReviewInput}
+              multiline
+              autoFocus
+              placeholder={
+                products.find((p) => p.id === activeModal?.product?.id)
+                  ?.review || "Enter your review..."
+              }
+              helpText={
+                products.find((p) => p.id === activeModal?.product?.id)?.review
+                  ? `Current review: ${products.find((p) => p.id === activeModal?.product?.id)?.review}`
+                  : undefined
+              }
+            />
             <div>
               <b>Product ID:</b> {activeModal?.product?.id}
             </div>
